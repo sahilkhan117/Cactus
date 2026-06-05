@@ -39,7 +39,7 @@ app.use(cors({
 }));
 
 // Explicitly respond 200 to all OPTIONS preflight requests
-app.options("*", cors());
+app.options("/{*path}", cors()); // Express 5: wildcard must be named
 
 // Body parsers (after CORS, before routes)
 app.use(express.json());
