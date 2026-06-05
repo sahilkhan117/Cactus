@@ -19,7 +19,7 @@ const server = http.createServer(app);
 const allowedOrigins = [
   "http://localhost:5173",          // Vite dev server
   "http://localhost:4173",          // Vite preview server
-  "https://cactus-green.vercel.app", // Production frontend
+  "https://cactus-cyan.vercel.app", // Production frontend
   process.env.CLIENT_URL,           // Override via Render env var
 ].filter(Boolean) as string[];
 
