@@ -1,4 +1,4 @@
-# 🌵 Cactus — Campus Social & Study Discovery Platform
+# <img src="client/public/logo.png" alt="Cactus" height="40"> Cactus — Campus Social & Study Discovery Platform
 
 > A modern, real-time campus social app for students to connect, collaborate, and share moments with classmates.
 
