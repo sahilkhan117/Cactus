@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
 import { useSocket } from '../context/SocketContext';
 import { useTheme } from '../context/ThemeContext';
@@ -77,7 +78,7 @@ export default function Alerts() {
 
   return (
     <div className={`flex min-h-screen ${dark ? 'bg-black text-[#e0e3de]' : 'bg-[#FAFBF9] text-slate-800'}`}>
-      <main className="flex-1 md:ml-64 pt-20 md:pt-12 px-6 md:px-12 max-w-4xl mx-auto md:mx-0 pb-20 md:pb-0">
+      <main className="flex-1 pt-20 md:pt-12 px-6 md:px-12 max-w-4xl mx-auto md:mx-0 pb-20 md:pb-0">
         <header className="mb-10">
           <h1 className="cabinet text-2xl font-900 tracking-tight text-insta-grad uppercase">Daily Heartbeats 💖</h1>
           <p className={`text-xs mt-1 satoshi ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>See who's interacting with your posts and vibe tags.</p>
@@ -99,12 +100,12 @@ export default function Alerts() {
                   ? (dark ? 'bg-zinc-950/40 border-zinc-900 text-zinc-400' : 'bg-slate-100/50 border-slate-200 text-slate-500') 
                   : (dark ? 'bg-zinc-900 border-pink-500/20 text-zinc-200 shadow-sm' : 'bg-white border-rose-200 shadow-sm text-slate-800')
               }`}>
-                <div className={`w-9 h-9 rounded-full overflow-hidden border shrink-0 ${dark ? 'border-zinc-800' : 'border-slate-200'}`}>
+                <Link to={a.senderId?._id ? `/profile/${a.senderId._id}` : '#'} className={`w-9 h-9 rounded-full overflow-hidden border shrink-0 ${dark ? 'border-zinc-800' : 'border-slate-200'} cursor-pointer hover:opacity-80 transition-all`}>
                   <img className="w-full h-full object-cover" alt="Sender avatar" src={avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80'} />
-                </div>
+                </Link>
                 <div className="flex-grow min-w-0">
                   <p className="text-sm leading-normal">
-                    <span className="font-bold mr-1">{senderName}</span>
+                    <Link to={a.senderId?._id ? `/profile/${a.senderId._id}` : '#'} className="font-bold mr-1 hover:text-pink-500 transition-colors">{senderName}</Link>
                     {config.text}
                   </p>
                   <span className={`text-[9px] block mt-1 ${dark ? 'text-zinc-600' : 'text-slate-400'}`}>{new Date(a.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

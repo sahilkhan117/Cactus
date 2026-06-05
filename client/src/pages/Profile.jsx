@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
 import { api } from '../services/api';
@@ -8,15 +9,47 @@ import {
 
 export default function Profile() {
   const { user, setUser, logout } = useUser();
+  const { id } = useParams();
+  const navigate = useNavigate();
   const { theme } = useTheme();
+  
+  const [targetUser, setTargetUser] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [bio, setBio] = useState(user?.bio || '');
-  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
+  const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
   const dark = theme === 'dark';
+  const isOwnProfile = !id || id === user?._id;
+  const displayUser = isOwnProfile ? user : targetUser;
+
+  useEffect(() => {
+    if (!isOwnProfile) {
+      async function fetchProfile() {
+        try {
+          setLoading(true);
+          const data = await api.users.getProfile(id);
+          setTargetUser(data);
+        } catch (err) {
+          console.error(err);
+          alert("Could not load student profile 💔");
+        } finally {
+          setLoading(false);
+        }
+      }
+      fetchProfile();
+    }
+  }, [id, isOwnProfile]);
+
+  useEffect(() => {
+    if (isOwnProfile && user) {
+      setBio(user.bio || '');
+      setAvatarUrl(user.avatarUrl || '');
+    }
+  }, [user, isOwnProfile]);
 
   const handleAvatarFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -49,11 +82,27 @@ export default function Profile() {
     }
   };
 
+  const handleStartMessage = () => {
+    if (displayUser) {
+      navigate('/chat', { state: { startChatWith: displayUser } });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className={`flex min-h-screen items-center justify-center ${dark ? 'bg-black text-[#e0e3de]' : 'bg-[#FAFBF9] text-slate-800'}`}>
+        <div className={`text-xs ${dark ? 'text-zinc-650' : 'text-slate-400'}`}>Loading student profile... ✨</div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex min-h-screen ${dark ? 'bg-black text-[#e0e3de]' : 'bg-[#FAFBF9] text-slate-800'}`}>
-      <main className="flex-1 md:ml-64 pt-20 md:pt-12 px-6 md:px-12 max-w-4xl mx-auto md:mx-0 pb-20 md:pb-0">
+      <main className="flex-1 pt-20 md:pt-12 px-6 md:px-12 max-w-4xl mx-auto md:mx-0 pb-20 md:pb-0">
         <header className="mb-10">
-          <h1 className="cabinet text-2xl font-900 tracking-tight text-insta-grad uppercase">My Space 🌸</h1>
+          <h1 className="cabinet text-2xl font-900 tracking-tight text-insta-grad uppercase">
+            {isOwnProfile ? 'My Space 🌸' : `${displayUser?.fullName.split(' ')[0]}'s Space 🌵`}
+          </h1>
         </header>
 
         <section className={`rounded-2xl border p-8 max-w-2xl transition-all ${dark ? 'bg-zinc-950 border-zinc-900 shadow-xl' : 'bg-white border-slate-200 shadow-sm'}`}>
@@ -68,7 +117,7 @@ export default function Profile() {
               <img 
                 className="w-full h-full object-cover rounded-full" 
                 alt="User Profile" 
-                src={(editing ? avatarUrl : user?.avatarUrl) || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"} 
+                src={(editing ? avatarUrl : displayUser?.avatarUrl) || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"} 
               />
               {editing && (
                 <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
@@ -84,21 +133,30 @@ export default function Profile() {
             </div>
             
             <div className="text-center sm:text-left flex-1">
-              <h2 className="text-xl font-bold tracking-tight">{user?.fullName || 'Academic Explorer'}</h2>
-              <p className={`text-xs font-bold uppercase tracking-widest mt-1 ${dark ? 'text-pink-400' : 'text-rose-600'}`}>@{user?.role || 'student'}</p>
-              <p className={`text-xs mt-2 ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>{user?.email}</p>
+              <h2 className="text-xl font-bold tracking-tight">{displayUser?.fullName || 'Academic Explorer'}</h2>
+              <p className={`text-xs font-bold uppercase tracking-widest mt-1 ${dark ? 'text-pink-400' : 'text-rose-600'}`}>@{displayUser?.role || 'student'}</p>
+              <p className={`text-xs mt-2 ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>{displayUser?.email}</p>
             </div>
             
-            {!editing && (
+            {isOwnProfile ? (
+              !editing && (
+                <button 
+                  onClick={() => {
+                    setBio(user?.bio || '');
+                    setAvatarUrl(user?.avatarUrl || '');
+                    setEditing(true);
+                  }}
+                  className={`flex items-center gap-1.5 border px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${dark ? 'bg-zinc-900 border-zinc-800 hover:border-pink-500/20 text-zinc-300' : 'bg-white border-slate-250 hover:border-slate-350 text-slate-700 shadow-sm'}`}
+                >
+                  <MdEdit /> Edit Profile
+                </button>
+              )
+            ) : (
               <button 
-                onClick={() => {
-                  setBio(user?.bio || '');
-                  setAvatarUrl(user?.avatarUrl || '');
-                  setEditing(true);
-                }}
-                className={`flex items-center gap-1.5 border px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${dark ? 'bg-zinc-900 border-zinc-800 hover:border-pink-500/20 text-zinc-300' : 'bg-white border-slate-250 hover:border-slate-350 text-slate-700 shadow-sm'}`}
+                onClick={handleStartMessage}
+                className={`flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all bg-insta-grad text-white shadow-sm hover:brightness-110 active:scale-95`}
               >
-                <MdEdit /> Edit Profile
+                Message 💬
               </button>
             )}
           </div>
@@ -168,15 +226,15 @@ export default function Profile() {
             <div className={`space-y-5 divide-y ${dark ? 'divide-zinc-900' : 'divide-slate-100'}`}>
               <div className="py-2">
                 <h4 className={`block text-[9px] font-bold uppercase tracking-widest mb-1.5 ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>Academic Field 🎓</h4>
-                <p className="text-sm font-medium">{user?.department || 'Not configured (e.g. Computer Science)'}</p>
+                <p className="text-sm font-medium">{displayUser?.department || 'Not configured (e.g. Computer Science)'}</p>
               </div>
               <div className="pt-4">
                 <h4 className={`block text-[9px] font-bold uppercase tracking-widest mb-1.5 ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>Graduation Batch 🎓</h4>
-                <p className="text-sm font-medium">{user?.batch || '2026'}</p>
+                <p className="text-sm font-medium">{displayUser?.batch || '2026'}</p>
               </div>
               <div className="pt-4">
                 <h4 className={`block text-[9px] font-bold uppercase tracking-widest mb-1.5 ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>Vibe Check 📝</h4>
-                <p className="text-sm leading-relaxed">{user?.bio || 'This classmate has not written a bio yet.'}</p>
+                <p className="text-sm leading-relaxed">{displayUser?.bio || 'This classmate has not written a bio yet.'}</p>
               </div>
             </div>
           )}

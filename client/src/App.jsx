@@ -51,6 +51,16 @@ function App() {
               } 
             />
             <Route 
+              path="/profile/:id" 
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Profile />
+                  </Layout>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
               path="/alerts" 
               element={
                 <ProtectedRoute>

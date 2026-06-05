@@ -57,6 +57,7 @@ import searchRoutes from "./routes/search.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import storyRoutes from "./routes/story.routes.js";
+import pollRoutes from "./routes/poll.routes.js";
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -68,6 +69,7 @@ app.use("/api/search", searchRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/stories", storyRoutes);
+app.use("/api/polls", pollRoutes);
 
 // Health check
 app.get("/", (_req, res) => {

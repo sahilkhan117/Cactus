@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
 import { api } from '../services/api';
+import { triggerSpark } from '../services/spark';
 import { 
   MdSearch, MdImage, MdGifBox, MdLocationOn, 
   MdMoreHoriz, MdFavorite, MdChatBubble, MdShare
@@ -10,6 +11,7 @@ import {
 
 export default function Feed() {
   const { user, logout } = useUser();
+  const navigate = useNavigate();
   const { theme } = useTheme();
   const [posts, setPosts] = useState([]);
   const [postContent, setPostContent] = useState('');
@@ -32,12 +34,56 @@ export default function Feed() {
   const [storyUploading, setStoryUploading] = useState(false);
   const storyFileInputRef = useRef(null);
 
+  // Comment states
+  const [expandedComments, setExpandedComments] = useState({});
+  const [postComments, setPostComments] = useState({});
+  const [loadingComments, setLoadingComments] = useState({});
+  const [commentInputs, setCommentInputs] = useState({});
+
+  // Dynamic Right Panel states
+  const [votedOption, setVotedOption] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  const [candidateIdx, setCandidateIdx] = useState(0);
+  const [showMatchCelebration, setShowMatchCelebration] = useState(false);
+
+  // Polls states
+  const [polls, setPolls] = useState([]);
+  const [isPollModalOpen, setIsPollModalOpen] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollsLoading, setPollsLoading] = useState(false);
+  const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
+
+  useEffect(() => {
+    const handleToggleWidgets = () => {
+      setIsMobilePanelOpen(prev => !prev);
+    };
+    window.addEventListener('toggle-widgets', handleToggleWidgets);
+    return () => window.removeEventListener('toggle-widgets', handleToggleWidgets);
+  }, []);
+
+  useEffect(() => {
+    if (posts.length > 0) {
+      const uniqueAuthors = [];
+      const seen = new Set();
+      posts.forEach(p => {
+        const author = p.authorId;
+        if (author && author._id !== user?._id && !seen.has(author._id)) {
+          seen.add(author._id);
+          uniqueAuthors.push(author);
+        }
+      });
+      setCandidates(uniqueAuthors);
+    }
+  }, [posts, user]);
+
   const dark = theme === 'dark';
 
   // Fetch posts and stories on mount
   useEffect(() => {
     fetchPosts();
     fetchStories();
+    fetchPolls();
   }, []);
 
   const fetchPosts = async (loadMore = false) => {
@@ -243,11 +289,131 @@ export default function Feed() {
     return () => clearTimeout(timer);
   }, [activeGroupIdx, activeItemIdx, stories]);
 
+  // Comment Handlers
+  const toggleComments = async (postId) => {
+    const isExpanded = expandedComments[postId];
+    setExpandedComments(prev => ({ ...prev, [postId]: !isExpanded }));
+
+    if (!isExpanded && !postComments[postId]) {
+      try {
+        setLoadingComments(prev => ({ ...prev, [postId]: true }));
+        const commentsData = await api.comments.getComments(postId);
+        setPostComments(prev => ({ ...prev, [postId]: commentsData }));
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingComments(prev => ({ ...prev, [postId]: false }));
+      }
+    }
+  };
+
+  const handleAddComment = async (e, postId) => {
+    e.preventDefault();
+    const content = commentInputs[postId]?.trim();
+    if (!content) return;
+
+    try {
+      const newComment = await api.comments.createComment(postId, content);
+      const populatedComment = {
+        ...newComment,
+        authorId: {
+          _id: user?._id,
+          fullName: user?.fullName || 'Anonymous',
+          avatarUrl: user?.avatarUrl,
+          role: user?.role || 'student'
+        }
+      };
+
+      setPostComments(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), populatedComment]
+      }));
+
+      setCommentInputs(prev => ({ ...prev, [postId]: '' }));
+
+      setPosts(prev => prev.map(p => {
+        if (p._id === postId) {
+          return { ...p, commentCount: (p.commentCount || 0) + 1 };
+        }
+        return p;
+      }));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to submit comment');
+    }
+  };
+
+  const handleVote = (e, option) => {
+    setVotedOption(option);
+    triggerSpark(e, '🔥');
+  };
+
+  const handleMatch = (e) => {
+    triggerSpark(e, '🎉');
+    setShowMatchCelebration(true);
+  };
+
+  const handleNextCandidate = () => {
+    setShowMatchCelebration(false);
+    setCandidateIdx(prev => (prev + 1) % candidates.length);
+  };
+
+  const fetchPolls = async () => {
+    try {
+      setPollsLoading(true);
+      const data = await api.polls.getAll();
+      setPolls(data);
+    } catch (err) {
+      console.error("Failed to fetch polls:", err);
+    } finally {
+      setPollsLoading(false);
+    }
+  };
+
+  const handlePollVote = async (e, pollId, optionIndex) => {
+    try {
+      triggerSpark(e, '⚡');
+      const updatedPoll = await api.polls.vote(pollId, optionIndex);
+      setPolls(prev => prev.map(p => p._id === pollId ? updatedPoll : p));
+    } catch (err) {
+      console.error("Failed to vote:", err);
+      alert(err.message || "Failed to submit vote");
+    }
+  };
+
+  const handleCreatePoll = async (e) => {
+    e.preventDefault();
+    const cleanOptions = pollOptions.filter(o => o.trim() !== '');
+    if (!pollQuestion.trim() || cleanOptions.length < 2) {
+      alert("Please provide a question and at least 2 options.");
+      return;
+    }
+    try {
+      const newPoll = await api.polls.create(pollQuestion.trim(), cleanOptions);
+      setPolls(prev => [newPoll, ...prev]);
+      setIsPollModalOpen(false);
+      setPollQuestion('');
+      setPollOptions(['', '']);
+    } catch (err) {
+      console.error("Failed to create poll:", err);
+      alert(err.message || "Failed to create poll");
+    }
+  };
+
+  // Get the most popular poll (highest total votes) or latest poll for right sidebar Hot Take
+  const hotTakePoll = polls.length > 0 
+    ? [...polls].sort((a, b) => {
+        const aVotes = a.options.reduce((sum, o) => sum + o.votes.length, 0);
+        const bVotes = b.options.reduce((sum, o) => sum + o.votes.length, 0);
+        return bVotes - aVotes;
+      })[0]
+    : null;
+
   return (
     <div className={`flex min-h-screen ${dark ? 'bg-black text-[#e0e3de]' : 'bg-[#FAFBF9] text-slate-800'}`}>
       
       {/* Main Content Canvas */}
-      <main className="flex-1 md:ml-64 lg:mr-80 pt-20 md:pt-8 px-4 md:px-8 max-w-4xl mx-auto lg:mx-0 pb-20">
+      <main className="flex-1 lg:mr-80 pt-20 md:pt-8 px-4 md:px-8 max-w-5xl mx-auto lg:mx-0 pb-20">
         
         {/* Stories Carousel */}
         <div className="flex gap-4 items-center overflow-x-auto pb-4 mb-6 scrollbar-hide">
@@ -256,7 +422,7 @@ export default function Feed() {
             <div 
               onClick={() => storyFileInputRef.current?.click()}
               className={`w-14 h-14 rounded-full border-2 border-dashed flex items-center justify-center cursor-pointer transition-all ${
-                dark ? 'border-zinc-800 hover:border-pink-500 bg-zinc-950 text-pink-400' : 'border-slate-200 hover:border-rose-500 bg-white text-rose-500'
+                dark ? 'border-zinc-800 hover:border-pink-500 bg-zinc-950 text-pink-400' : 'border-slate-200 hover:border-rose-500 bg-white text-rose-50 text-rose-500'
               }`}
             >
               {storyUploading ? (
@@ -392,60 +558,140 @@ export default function Feed() {
             </div>
           )}
 
-          {posts.map((post) => (
-            <article key={post._id} className={`group rounded-2xl border overflow-hidden shadow-sm ${dark ? 'bg-zinc-950 border-zinc-900' : 'bg-white border-slate-200/80'}`}>
-              <div className={`flex items-center gap-3 px-5 py-4 border-b ${dark ? 'border-zinc-900' : 'border-slate-100'}`}>
-                <div className={`w-10 h-10 rounded-full overflow-hidden border p-0.5 ${dark ? 'border-zinc-800' : 'border-slate-200'}`}>
-                  <img 
-                    className="w-full h-full object-cover rounded-full" 
-                    alt={post.authorId?.fullName || "Author"} 
-                    src={post.authorId?.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"} 
+        {posts.map((post) => (
+            <article key={post._id} className={`group rounded-2xl border overflow-hidden transition-all duration-200 ${dark ? 'bg-zinc-950 border-zinc-900 hover:border-zinc-800' : 'bg-white border-slate-200/80 hover:border-slate-300/80 hover:shadow-md shadow-sm'}`}>
+
+              {/* HEADER */}
+              <div className={`flex items-center gap-3.5 px-5 py-4`}>
+                <Link to={post.authorId?._id ? `/profile/${post.authorId._id}` : '#'} className="flex-shrink-0">
+                  <img
+                    className={`w-10 h-10 rounded-full object-cover ring-2 ring-offset-2 transition-opacity hover:opacity-85 ${dark ? 'ring-zinc-800 ring-offset-zinc-950' : 'ring-slate-200 ring-offset-white'}`}
+                    alt={post.authorId?.fullName || "Author"}
+                    src={post.authorId?.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"}
                   />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h3 className={`font-bold text-sm ${dark ? 'text-zinc-200' : 'text-slate-800'}`}>{post.authorId?.fullName || "Anonymous"}</h3>
-                    <span className={`text-[10px] ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>• {new Date(post.createdAt).toLocaleDateString()}</span>
+                </Link>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Link to={post.authorId?._id ? `/profile/${post.authorId._id}` : '#'} className={`font-bold text-sm leading-none hover:text-pink-500 transition-colors truncate ${dark ? 'text-zinc-100' : 'text-slate-800'}`}>
+                      {post.authorId?.fullName || "Anonymous"}
+                    </Link>
+                    <span className={`text-[11px] flex-shrink-0 ${dark ? 'text-zinc-600' : 'text-slate-400'}`}>
+                      {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
                   </div>
-                  <p className={`text-[10px] font-bold uppercase tracking-widest ${dark ? 'text-pink-400' : 'text-pink-500'}`}>@{post.authorId?.role || "student"}</p>
+                  <p className={`text-[11px] font-bold uppercase tracking-widest mt-0.5 ${dark ? 'text-pink-400' : 'text-pink-500'}`}>
+                    @{post.authorId?.role || "student"}
+                  </p>
                 </div>
-                <button className={`ml-auto ${dark ? 'text-zinc-600 hover:text-zinc-400' : 'text-slate-400 hover:text-slate-600'}`}><MdMoreHoriz className="text-xl" /></button>
+                <button className={`flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full transition-colors ${dark ? 'text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}>
+                  <MdMoreHoriz className="text-xl" />
+                </button>
               </div>
 
-              <div className="p-5">
-                <p className={`text-sm font-normal leading-relaxed ${dark ? 'text-zinc-300' : 'text-slate-700'}`}>{post.content}</p>
+              {/* MEDIA — above text if present */}
+              {post.mediaUrls && post.mediaUrls[0] && (
+                <div className="w-full aspect-video overflow-hidden">
+                  <img
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.015]"
+                    alt="Post attachment"
+                    src={post.mediaUrls[0]}
+                  />
+                </div>
+              )}
+
+              {/* BODY */}
+              <div className="px-5 pt-4 pb-3">
+                <p className={`text-sm leading-relaxed ${dark ? 'text-zinc-300' : 'text-slate-700'}`}>{post.content}</p>
                 {post.tags && post.tags.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-1.5">
+                  <div className="mt-3 flex flex-wrap gap-1.5">
                     {post.tags.map(t => (
-                      <span key={t} className={`px-2.5 py-0.5 text-[9px] font-bold uppercase rounded-full border ${dark ? 'bg-pink-950/20 text-pink-400 border-pink-900/10' : 'bg-rose-50 text-rose-600 border-rose-100/50'}`}>#{t}</span>
+                      <span key={t} className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full border cursor-pointer transition-colors ${dark ? 'bg-pink-950/20 text-pink-400 border-pink-900/20 hover:bg-pink-950/40' : 'bg-rose-50 text-rose-500 border-rose-100 hover:bg-rose-100'}`}>
+                        #{t}
+                      </span>
                     ))}
                   </div>
                 )}
               </div>
 
-              {post.mediaUrls && post.mediaUrls[0] && (
-                <div className={`aspect-video w-full relative overflow-hidden border-y ${dark ? 'bg-zinc-900 border-zinc-900' : 'bg-slate-50 border-slate-100'}`}>
-                  <img className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.01]" alt="Post attachment" src={post.mediaUrls[0]} />
+              {/* ACTION BAR */}
+              <div className={`flex items-center gap-1 px-4 py-2.5 border-t ${dark ? 'border-zinc-900' : 'border-slate-100'}`}>
+                <button
+                  onClick={(e) => { handleLike(post._id); triggerSpark(e, '❤️'); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all hover:scale-105 active:scale-95 ${post.likeCount > 0 ? 'text-rose-500' : (dark ? 'text-zinc-500 hover:text-pink-400 hover:bg-zinc-900' : 'text-slate-500 hover:text-rose-500 hover:bg-rose-50')}`}
+                >
+                  <MdFavorite className="text-base" />
+                  <span>{post.likeCount || 0}</span>
+                </button>
+
+                <button
+                  onClick={() => toggleComments(post._id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all hover:scale-105 active:scale-95 ${dark ? 'text-zinc-500 hover:text-pink-400 hover:bg-zinc-900' : 'text-slate-500 hover:text-rose-500 hover:bg-rose-50'}`}
+                >
+                  <MdChatBubble className="text-base" />
+                  <span>{post.commentCount || 0}</span>
+                </button>
+
+                {/* <button className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all hover:scale-105 active:scale-95 ${dark ? 'text-zinc-500 hover:text-pink-400 hover:bg-zinc-900' : 'text-slate-500 hover:text-rose-500 hover:bg-rose-50'}`}>
+                  <MdShare className="text-base" />
+                  <span>Share</span>
+                </button> */}
+              </div>
+
+              {/* COMMENTS */}
+              {expandedComments[post._id] && (
+                <div className={`border-t ${dark ? 'bg-zinc-950/60 border-zinc-900' : 'bg-slate-50/60 border-slate-100'}`}>
+
+                  {/* Comments list */}
+                  <div className="px-5 pt-4 space-y-4">
+                    {loadingComments[post._id] ? (
+                      <div className={`text-center py-3 text-xs ${dark ? 'text-zinc-600' : 'text-slate-400'}`}>Loading comments...</div>
+                    ) : (postComments[post._id] || []).length === 0 ? (
+                      <div className={`text-center py-3 text-xs ${dark ? 'text-zinc-600' : 'text-slate-400'}`}>No comments yet — be the first 🌸</div>
+                    ) : (
+                      (postComments[post._id] || []).map((comm) => (
+                        <div key={comm._id} className="flex gap-3">
+                          <Link to={comm.authorId?._id ? `/profile/${comm.authorId._id}` : '#'} className="flex-shrink-0">
+                            <img
+                              className={`w-7 h-7 rounded-full object-cover ring-1 ${dark ? 'ring-zinc-800' : 'ring-slate-200'}`}
+                              alt="Commenter avatar"
+                              src={comm.authorId?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80'}
+                            />
+                          </Link>
+                          <div className={`flex-1 min-w-0 rounded-xl px-3.5 py-2.5 ${dark ? 'bg-zinc-900/70' : 'bg-white border border-slate-100'}`}>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <Link to={comm.authorId?._id ? `/profile/${comm.authorId._id}` : '#'} className={`font-bold text-xs hover:text-pink-500 transition-colors ${dark ? 'text-zinc-200' : 'text-slate-700'}`}>
+                                {comm.authorId?.fullName || 'Anonymous'}
+                              </Link>
+                              <span className={`text-[9px] ${dark ? 'text-zinc-600' : 'text-slate-400'}`}>
+                                {new Date(comm.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            <p className={`text-xs leading-relaxed ${dark ? 'text-zinc-400' : 'text-slate-600'}`}>{comm.content}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Comment input */}
+                  <form onSubmit={(e) => handleAddComment(e, post._id)} className="flex items-center gap-2.5 px-5 py-4">
+                    <input
+                      type="text"
+                      value={commentInputs[post._id] || ''}
+                      onChange={(e) => setCommentInputs(prev => ({ ...prev, [post._id]: e.target.value }))}
+                      placeholder="Write a comment..."
+                      className={`flex-1 rounded-xl px-4 py-2.5 text-xs border focus:outline-none transition-colors ${dark ? 'bg-zinc-900 border-zinc-800 focus:border-pink-500/60 text-white placeholder-zinc-600' : 'bg-white border-slate-200 focus:border-rose-300 text-slate-800 placeholder-slate-400'}`}
+                    />
+                    <button
+                      type="submit"
+                      disabled={!commentInputs[post._id]?.trim()}
+                      className="px-4 py-2.5 rounded-xl font-bold text-xs active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none bg-insta-grad text-white hover:brightness-110 flex-shrink-0"
+                    >
+                      Post
+                    </button>
+                  </form>
                 </div>
               )}
-
-              <div className={`flex items-center gap-6 px-5 py-3.5 border-t ${dark ? 'bg-zinc-950/50 border-zinc-900' : 'bg-slate-50/50 border-slate-100'}`}>
-                <button 
-                  onClick={() => handleLike(post._id)}
-                  className={`flex items-center gap-1.5 transition-all group/icon ${dark ? 'text-zinc-400 hover:text-pink-400' : 'text-slate-500 hover:text-rose-600'}`}
-                >
-                  <MdFavorite className={`text-xl transition-all scale-100 group-hover/icon:scale-110 ${post.likeCount > 0 ? 'fill-rose-500 text-rose-500' : ''}`} />
-                  <span className="text-xs font-bold">{post.likeCount || 0}</span>
-                </button>
-                <button className={`flex items-center gap-1.5 transition-all ${dark ? 'text-zinc-400 hover:text-pink-400' : 'text-slate-500 hover:text-rose-600'}`}>
-                  <MdChatBubble className="text-xl" />
-                  <span className="text-xs font-bold">{post.commentCount || 0}</span>
-                </button>
-                <button className={`flex items-center gap-1.5 transition-all ${dark ? 'text-zinc-400 hover:text-pink-400' : 'text-slate-500 hover:text-rose-600'}`}>
-                  <MdShare className="text-xl" />
-                  <span className="text-xs font-bold">Share</span>
-                </button>
-              </div>
             </article>
           ))}
 
@@ -465,57 +711,187 @@ export default function Feed() {
               {loading ? "Syncing Feed..." : "Load More Sparks"}
             </button>
           )}
-        </div>
+          </div>
       </main>
 
-      {/* Right Panel */}
-      <aside className={`hidden lg:flex flex-col w-80 fixed right-0 h-screen py-8 px-8 border-l transition-colors duration-300 ${dark ? 'border-zinc-900 bg-black' : 'border-slate-200 bg-white'}`}>
-        <h2 className="text-xs font-black uppercase tracking-widest mb-8 text-insta-grad">Trending Campus Vibes 🔥</h2>
-        <div className="space-y-6">
-          <div>
-            <p className={`text-[9px] font-bold uppercase tracking-tighter mb-1 ${dark ? 'text-zinc-650' : 'text-slate-400'}`}>Top Topic</p>
-            <h3 className={`font-bold text-sm ${dark ? 'text-zinc-300' : 'text-slate-800'}`}>#LibraryPrep</h3>
-            <p className={`text-xs ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>5.2k sparks this week</p>
-          </div>
-          <div>
-            <p className={`text-[9px] font-bold uppercase tracking-tighter mb-1 ${dark ? 'text-zinc-650' : 'text-slate-400'}`}>Campus Event</p>
-            <h3 className={`font-bold text-sm ${dark ? 'text-zinc-300' : 'text-slate-800'}`}>Hackathon Team Forming</h3>
-            <p className={`text-xs ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>3.1k study buddies talking</p>
-          </div>
-          <div>
-            <p className={`text-[9px] font-bold uppercase tracking-tighter mb-1 ${dark ? 'text-zinc-650' : 'text-slate-400'}`}>Canteen Gossip</p>
-            <h3 className={`font-bold text-sm ${dark ? 'text-zinc-300' : 'text-slate-800'}`}>Samosa Price Hike</h3>
-            <p className={`text-xs ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>1.8k angry updates</p>
-          </div>
-        </div>
+      <aside className={`
+        fixed right-0 h-screen border-l transition-all duration-300 overflow-y-auto pb-32
+        ${dark ? 'border-zinc-900 bg-black/95 text-[#e0e3de]' : 'border-slate-200 bg-white/95 text-slate-800'}
+        ${isMobilePanelOpen 
+          ? 'flex flex-col w-80 z-50 pt-20 px-6 top-0 backdrop-blur-md shadow-2xl' 
+          : 'hidden lg:flex flex-col w-80 py-8 px-8 top-0'
+        }
+      `}>
         
-        <div className={`mt-10 rounded-xl p-5 border ${dark ? 'bg-zinc-950 border-zinc-900' : 'bg-rose-50/20 border-rose-100 shadow-sm'}`}>
-          <h4 className="text-xs font-bold mb-4 text-rose-500">Popular Profiles ✨</h4>
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-300">
-                <img className="w-full h-full object-cover" alt="User profile" src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=150&h=150&q=80" />
-              </div>
-              <div className="text-[11px] flex-1">
-                <p className="font-bold">@aarav_sharma</p>
-                <p className={`text-[10px] ${dark ? 'text-zinc-600' : 'text-slate-400'}`}>Following</p>
-              </div>
-              <button className={`text-[9px] font-bold border px-2 py-0.5 rounded-full ${dark ? 'text-pink-400 border-pink-500/20 bg-pink-500/5' : 'text-rose-600 border-rose-200 bg-rose-50'}`}>Pro</button>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-300">
-                <img className="w-full h-full object-cover" alt="User profile" src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80" />
-              </div>
-              <div className="text-[11px] flex-1">
-                <p className="font-bold">@ananya_iyer</p>
-                <p className={`text-[10px] ${dark ? 'text-zinc-600' : 'text-slate-400'}`}>Suggested</p>
-              </div>
-              <button className={`text-[9px] font-bold border px-2.5 py-0.5 rounded-full ${dark ? 'text-zinc-400 border-zinc-800' : 'text-slate-500 border-slate-200'}`}>Follow</button>
-            </div>
-          </div>
-        </div>
+        {/* Mobile Close Button */}
+        {isMobilePanelOpen && (
+          <button
+            onClick={() => setIsMobilePanelOpen(false)}
+            className="lg:hidden self-end mb-4 text-xs font-bold uppercase tracking-wider text-rose-500 hover:text-rose-600 transition-colors border-none bg-transparent cursor-pointer"
+          >
+            ✕ Close
+          </button>
+        )}
         
+        {/* Create Campus Poll Button */}
+        <div className="mb-6">
+          <h2 className="text-xs font-black uppercase tracking-widest mb-4 text-insta-grad">Campus Debate 🗳️</h2>
+          <button
+            type="button"
+            onClick={() => setIsPollModalOpen(true)}
+            className="w-full py-3.5 rounded-xl font-bold text-xs bg-insta-grad text-white hover:brightness-110 active:scale-95 transition-all cursor-pointer border-none flex items-center justify-center gap-2 shadow-md"
+          >
+            <span>+</span> Create Campus Poll
+          </button>
+        </div>
+
+        {/* Campus Polls List */}
+        <div className="mb-6">
+          <h2 className="text-xs font-black uppercase tracking-widest mb-4 text-insta-grad">Active Polls 📊</h2>
+          {pollsLoading ? (
+            <div className={`text-center py-6 text-xs ${dark ? 'text-zinc-700' : 'text-slate-400'}`}>Loading polls... ⏳</div>
+          ) : polls.length === 0 ? (
+            <div className={`text-center py-6 text-xs ${dark ? 'text-zinc-600' : 'text-slate-400'}`}>No campus polls active. Be the first to ask! 🌸</div>
+          ) : (
+            <div className="space-y-4">
+              {polls.map((poll) => {
+                const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes.length, 0);
+                const hasVoted = poll.options.some(opt => opt.votes.includes(user?._id));
+                
+                return (
+                  <div key={poll._id} className={`p-4 rounded-xl border transition-all ${dark ? 'bg-zinc-950 border-zinc-900 hover:border-pink-500/20' : 'bg-slate-50/50 border-slate-100 hover:border-rose-300'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <img 
+                        className="w-4 h-4 rounded-full object-cover border border-slate-200"
+                        src={poll.creatorId?.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"}
+                        alt={poll.creatorId?.fullName || "Anonymous"}
+                      />
+                      <span className={`text-[9px] font-bold ${dark ? 'text-zinc-500' : 'text-slate-500'}`}>{poll.creatorId?.fullName || "Anonymous"}</span>
+                    </div>
+                    <p className={`text-[11px] font-bold mb-2 ${dark ? 'text-zinc-200' : 'text-slate-800'}`}>{poll.question}</p>
+                    
+                    <div className="space-y-1.5">
+                      {poll.options.map((option, oIdx) => {
+                        const isSelected = option.votes.includes(user?._id);
+                        const percent = totalVotes > 0 ? Math.round((option.votes.length / totalVotes) * 100) : 0;
+                        
+                        return (
+                          <button
+                            key={oIdx}
+                            onClick={(e) => handlePollVote(e, poll._id, oIdx)}
+                            className={`w-full relative text-left py-1.5 px-2.5 border rounded-lg text-[9px] font-bold overflow-hidden transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer ${
+                              isSelected
+                                ? (dark ? 'border-pink-500 text-pink-400 bg-pink-500/10' : 'border-rose-500 text-rose-600 bg-rose-500/10')
+                                : (dark ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-pink-500/30' : 'bg-white border-slate-200 text-slate-700 hover:border-rose-300')
+                            }`}
+                          >
+                            <div 
+                              className={`absolute left-0 top-0 bottom-0 transition-all duration-500 ${
+                                isSelected
+                                  ? (dark ? 'bg-pink-500/20' : 'bg-rose-500/20')
+                                  : (dark ? 'bg-zinc-850/60' : 'bg-slate-100/70')
+                              }`}
+                              style={{ width: `${percent}%`, zIndex: 0 }}
+                            />
+                            
+                            <div className="flex justify-between relative z-10">
+                              <span>{option.text}</span>
+                              <span>{percent}%</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className={`text-[8px] text-right mt-1.5 ${dark ? 'text-zinc-650' : 'text-slate-400'}`}>{totalVotes} votes</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Dynamic Vibe Matcher Game */}
+        <div className="mt-8">
+          <h2 className="text-xs font-black uppercase tracking-widest mb-4 text-insta-grad">Campus Vibe Matcher ✦</h2>
+          {candidates.length > 0 ? (
+            (() => {
+              const candidate = candidates[candidateIdx];
+              return (
+                <div className={`p-4 rounded-xl border relative overflow-hidden transition-all duration-300 ${
+                  showMatchCelebration 
+                    ? (dark ? 'bg-pink-950/20 border-pink-500/30' : 'bg-rose-50 border-rose-200')
+                    : (dark ? 'bg-zinc-950 border-zinc-900' : 'bg-white border-slate-200 shadow-sm')
+                }`}>
+                  {showMatchCelebration ? (
+                    <div className="text-center py-4 space-y-4">
+                      <div className="text-4xl animate-bounce">🎉</div>
+                      <div>
+                        <p className="font-extrabold text-sm text-insta-grad leading-tight">It's a Vibe Match!</p>
+                        <p className={`text-[10px] mt-1 ${dark ? 'text-zinc-400' : 'text-slate-500'}`}>You and {candidate.fullName.split(' ')[0]} share matching campus sparks.</p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <button 
+                          onClick={() => navigate('/chat', { state: { startChatWith: candidate } })}
+                          className="w-full py-2 rounded-lg font-bold text-xs bg-insta-grad text-white hover:brightness-110 active:scale-95 transition-all cursor-pointer border-none"
+                        >
+                          Chat with {candidate.fullName.split(' ')[0]} 💬
+                        </button>
+                        <button 
+                          onClick={handleNextCandidate}
+                          className={`w-full py-2 rounded-lg font-bold text-xs border transition-all active:scale-95 cursor-pointer ${
+                            dark ? 'border-zinc-800 text-zinc-400 hover:bg-zinc-900' : 'border-slate-200 text-slate-650 hover:bg-slate-50'
+                          }`}
+                        >
+                          Next Profile ➡️
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 text-left">
+                        <div className={`w-12 h-12 rounded-full overflow-hidden border p-0.5 shrink-0 ${dark ? 'border-zinc-800' : 'border-slate-200'}`}>
+                          <img className="w-full h-full object-cover rounded-full" src={candidate.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80"} alt={candidate.fullName} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <Link to={`/profile/${candidate._id}`} className={`font-bold text-xs truncate hover:text-pink-500 transition-colors block ${dark ? 'text-zinc-200' : 'text-slate-800'}`}>
+                            {candidate.fullName}
+                          </Link>
+                          <p className={`text-[9px] font-bold uppercase tracking-widest ${dark ? 'text-pink-400' : 'text-rose-600'}`}>
+                            @{candidate.role || 'student'}
+                          </p>
+                        </div>
+                      </div>
+                      <p className={`text-[11px] leading-relaxed italic text-left ${dark ? 'text-zinc-450' : 'text-slate-500'}`}>
+                        "{candidate.bio || 'Sharing creative campus sparks and project updates.'}"
+                      </p>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={handleNextCandidate}
+                          className={`flex-1 py-1.5 rounded-lg font-bold text-[10px] border transition-all active:scale-95 cursor-pointer ${
+                            dark ? 'border-zinc-800 text-zinc-400 hover:bg-zinc-900' : 'border-slate-200 text-slate-650 hover:bg-slate-50'
+                          }`}
+                        >
+                          Pass ➡️
+                        </button>
+                        <button 
+                          onClick={handleMatch}
+                          className="flex-1 py-1.5 rounded-lg font-bold text-[10px] bg-insta-grad text-white hover:brightness-110 active:scale-95 transition-all cursor-pointer border-none"
+                        >
+                          Match 💖
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()
+          ) : (
+            <div className={`p-4 rounded-xl border text-center text-xs py-6 ${dark ? 'bg-zinc-950 border-zinc-900 text-zinc-600' : 'bg-white border-slate-200 text-slate-400'}`}>
+              Looking for more classmates... ✨
+            </div>
+          )}
+        </div>
+
         <footer className={`mt-auto pt-8 flex flex-wrap gap-x-3 gap-y-1 text-[9px] font-medium ${dark ? 'text-zinc-700' : 'text-slate-400'}`}>
           <a className="hover:text-pink-500 transition-colors" href="#">Privacy</a>
           <a className="hover:text-pink-500 transition-colors" href="#">Terms</a>
@@ -602,6 +978,113 @@ export default function Feed() {
               className="absolute right-0 top-0 bottom-0 w-1/4 cursor-pointer"
             />
           </div>
+
+          {/* Story Quick Reactions */}
+          <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-4 z-50">
+            {['❤️', '🔥', '😂', '👏', '🎉', '😮'].map(emoji => (
+              <button
+                key={emoji}
+                onClick={(e) => triggerSpark(e, emoji)}
+                className="text-2xl p-2.5 rounded-full bg-white/10 hover:bg-white/20 hover:scale-110 active:scale-90 transition-all cursor-pointer backdrop-blur-md border-none"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Create Poll Modal */}
+      {isPollModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/65 backdrop-blur-md flex items-center justify-center p-4">
+          <form 
+            onSubmit={handleCreatePoll}
+            className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-all ${
+              dark ? 'bg-zinc-950 border-zinc-900 text-white shadow-pink-500/5' : 'bg-white border-slate-200 text-slate-800 shadow-slate-200/50'
+            }`}
+          >
+            <h3 className="text-base font-black uppercase tracking-wider mb-4 text-insta-grad">Create Campus Poll 🗳️</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className={`block text-[10px] font-black uppercase tracking-wider mb-1.5 ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>Poll Question</label>
+                <input 
+                  type="text"
+                  required
+                  value={pollQuestion}
+                  onChange={(e) => setPollQuestion(e.target.value)}
+                  placeholder="e.g. Best coffee spot near campus?"
+                  className={`w-full focus:ring-0 rounded-xl px-4 py-2.5 text-xs transition-all focus:outline-none ${
+                    dark ? 'bg-zinc-900 border border-zinc-800 focus:border-pink-500 text-white placeholder-zinc-700' : 'bg-slate-50 border border-slate-200 focus:border-rose-500 text-slate-800 placeholder-slate-405'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className={`block text-[10px] font-black uppercase tracking-wider mb-1.5 ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>Options</label>
+                <div className="space-y-2">
+                  {pollOptions.map((option, idx) => (
+                    <div key={idx} className="flex gap-2 items-center">
+                      <input 
+                        type="text"
+                        required={idx < 2}
+                        value={option}
+                        onChange={(e) => {
+                          const updated = [...pollOptions];
+                          updated[idx] = e.target.value;
+                          setPollOptions(updated);
+                        }}
+                        placeholder={`Option ${idx + 1}`}
+                        className={`flex-1 focus:ring-0 rounded-xl px-4 py-2 text-xs transition-all focus:outline-none ${
+                          dark ? 'bg-zinc-900 border border-zinc-800 focus:border-pink-500 text-white placeholder-zinc-700' : 'bg-slate-50 border border-slate-200 focus:border-rose-500 text-slate-800 placeholder-slate-405'
+                        }`}
+                      />
+                      {pollOptions.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => setPollOptions(prev => prev.filter((_, i) => i !== idx))}
+                          className={`text-xs hover:text-rose-500 p-1.5 transition-colors ${dark ? 'text-zinc-650' : 'text-slate-400'}`}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {pollOptions.length < 6 && (
+                  <button
+                    type="button"
+                    onClick={() => setPollOptions(prev => [...prev, ''])}
+                    className={`text-[10px] font-bold mt-2 hover:underline transition-colors ${dark ? 'text-pink-400' : 'text-rose-600'}`}
+                  >
+                    + Add Option
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPollModalOpen(false);
+                  setPollQuestion('');
+                  setPollOptions(['', '']);
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer border-none ${
+                  dark ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400' : 'bg-slate-100 hover:bg-slate-200 text-slate-650'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl font-bold text-xs bg-insta-grad text-white hover:brightness-110 active:scale-95 transition-all cursor-pointer border-none"
+              >
+                Create
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

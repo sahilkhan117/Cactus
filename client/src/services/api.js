@@ -148,5 +148,20 @@ export const api = {
       }),
     getAll: () => request('/stories'),
   },
+
+  // Polls
+  polls: {
+    create: (question, options = []) =>
+      request('/polls', {
+        method: 'POST',
+        body: JSON.stringify({ question, options }),
+      }),
+    getAll: () => request('/polls'),
+    vote: (pollId, optionIndex) =>
+      request(`/polls/${pollId}/vote`, {
+        method: 'POST',
+        body: JSON.stringify({ optionIndex }),
+      }),
+  },
 };
 

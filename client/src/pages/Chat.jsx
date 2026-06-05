@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
 import { useSocket } from '../context/SocketContext';
 import { useTheme } from '../context/ThemeContext';
 import { api } from '../services/api';
+import { triggerSpark } from '../services/spark';
 import { 
   MdChat, MdSend, MdArrowBack, MdFavorite, MdCameraAlt, MdClose
 } from 'react-icons/md';
@@ -11,13 +13,14 @@ export default function Chat() {
   const { user, logout } = useUser();
   const socket = useSocket();
   const { theme } = useTheme();
+  const location = useLocation();
   const [conversations, setConversations] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState(null);
-  const [loadingConvs, setLoadingConvs] = useState(false);
+  const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [uploadingInstant, setUploadingInstant] = useState(false);
   const [viewingInstant, setViewingInstant] = useState(null);
@@ -52,14 +55,58 @@ export default function Chat() {
     loadConversations();
   }, []);
 
+  // Handle startChatWith redirect from classmate profile view
+  useEffect(() => {
+    if (!loadingConvs && location.state?.startChatWith) {
+      const targetUser = location.state.startChatWith;
+      const existing = conversations.find(c => 
+        c.participants && c.participants.some(p => p._id === targetUser._id)
+      );
+      if (existing) {
+        selectConversation(existing);
+      } else {
+        const tempConv = {
+          _id: undefined,
+          participants: [
+            { _id: user?._id, fullName: user?.fullName, avatarUrl: user?.avatarUrl },
+            { _id: targetUser._id, fullName: targetUser.fullName, avatarUrl: targetUser.avatarUrl }
+          ],
+          lastMessageAt: new Date()
+        };
+        setConversations(prev => [tempConv, ...prev]);
+        setActiveConv(tempConv);
+      }
+      window.history.replaceState({}, document.title);
+    }
+  }, [conversations, location.state]);
+
+  const activeConvRef = useRef(activeConv);
+  const userRef = useRef(user);
+
+  useEffect(() => {
+    activeConvRef.current = activeConv;
+  }, [activeConv]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   // Socket event hookups
   useEffect(() => {
     if (!socket) return;
 
     // Listen for new messages
     socket.on('receive_message', (msg) => {
+      const currentActive = activeConvRef.current;
+      const currentUser = userRef.current;
+
       // If message belongs to current active conversation, append it
-      if (activeConv && msg.conversationId === activeConv._id) {
+      const otherPartId = currentActive?.participants?.find(p => p._id !== currentUser?._id)?._id;
+      if (currentActive && (msg.conversationId === currentActive._id || (!currentActive._id && (msg.senderId === currentUser?._id || msg.senderId === otherPartId)))) {
+        if (!currentActive._id) {
+          setActiveConv(prev => ({ ...prev, _id: msg.conversationId }));
+          socket.emit('join_room', msg.conversationId);
+        }
         setMessages(prev => [...prev, msg]);
         // Clear typing indicator
         setTypingUser(null);
@@ -76,8 +123,10 @@ export default function Chat() {
 
     // Listen for typing indicator
     socket.on('typing_indicator', (typingId) => {
-      if (activeConv) {
-        const otherParticipant = activeConv.participants.find(p => p._id !== user._id);
+      const currentActive = activeConvRef.current;
+      const currentUser = userRef.current;
+      if (currentActive) {
+        const otherParticipant = currentActive.participants.find(p => p._id !== currentUser?._id);
         if (otherParticipant && otherParticipant._id === typingId) {
           setTypingUser(otherParticipant.fullName);
           
@@ -103,7 +152,8 @@ export default function Chat() {
 
     // Listen for instant viewed notification
     socket.on('instant_viewed', ({ messageId, conversationId }) => {
-      if (activeConv && conversationId === activeConv._id) {
+      const currentActive = activeConvRef.current;
+      if (currentActive && conversationId === currentActive._id) {
         setMessages(prev => prev.map(m => {
           if (m._id === messageId) {
             return { ...m, instantViewed: true, instantMediaUrl: '' };
@@ -119,13 +169,15 @@ export default function Chat() {
       socket.off('new_conversation');
       socket.off('instant_viewed');
     };
-  }, [socket, activeConv, user]);
+  }, [socket]);
 
   // Handle selecting a conversation
   const selectConversation = async (conv) => {
     setActiveConv(conv);
     setMessages([]);
     setTypingUser(null);
+
+    if (!conv._id) return; // Skip loading messages if it's a new conversation room
 
     // Join socket room
     if (socket) {
@@ -223,8 +275,14 @@ export default function Chat() {
     socket.emit('typing_start', activeConv._id);
   };
 
+  const handleMessageReaction = (e) => {
+    const emojis = ['❤️', '🔥', '😂', '👍', '✨', '🎉'];
+    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+    triggerSpark(e, randomEmoji);
+  };
+
   return (
-    <div className={`flex-1 md:ml-64 flex h-screen overflow-hidden pt-16 md:pt-0 pb-16 md:pb-0 ${dark ? 'bg-black text-[#e0e3de]' : 'bg-[#FAFBF9] text-slate-800'}`}>
+    <div className={`flex-1 flex h-screen overflow-hidden pt-16 md:pt-0 pb-16 md:pb-0 ${dark ? 'bg-black text-[#e0e3de]' : 'bg-[#FAFBF9] text-slate-800'}`}>
       {/* Conversations Column */}
       <section className={`w-full md:w-80 border-r flex flex-col transition-colors ${activeConv ? 'hidden md:flex' : 'flex'} ${dark ? 'border-zinc-900 bg-zinc-950' : 'border-slate-200 bg-white'}`}>
         <div className={`p-6 border-b flex items-center justify-between ${dark ? 'border-zinc-900' : 'border-slate-100'}`}>
@@ -297,11 +355,15 @@ export default function Chat() {
                 const isInstant = msg.isInstant;
                 return (
                   <div key={msg._id || index} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-xs md:max-w-md p-3.5 rounded-2xl text-sm leading-relaxed ${
-                      isMe 
-                        ? (isInstant ? 'bg-pink-600 text-white rounded-tr-none shadow-sm border border-pink-500' : 'bg-insta-grad text-white rounded-tr-none shadow-sm')
-                        : (dark ? 'bg-zinc-900 text-zinc-100 border border-zinc-850 rounded-tl-none' : 'bg-white text-slate-800 border border-slate-200/80 rounded-tl-none shadow-sm')
-                    }`}>
+                    <div 
+                      onDoubleClick={handleMessageReaction}
+                      title="Double-tap to react ✨"
+                      className={`max-w-xs md:max-w-md p-3.5 rounded-2xl text-sm leading-relaxed cursor-pointer select-none transition-all hover:scale-[1.01] active:scale-[0.99] ${
+                        isMe 
+                          ? (isInstant ? 'bg-pink-600 text-white rounded-tr-none shadow-sm border border-pink-500' : 'bg-insta-grad text-white rounded-tr-none shadow-sm')
+                          : (dark ? 'bg-zinc-900 text-zinc-100 border border-zinc-850 rounded-tl-none' : 'bg-white text-slate-800 border border-slate-200/80 rounded-tl-none shadow-sm')
+                      }`}
+                    >
                       {isInstant ? (
                         <div className="flex flex-col gap-2">
                           {msg.instantViewed ? (

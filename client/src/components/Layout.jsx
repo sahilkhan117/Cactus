@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
 import { 
-  MdHome, MdChat, MdPerson, MdFavorite, MdWbSunny, MdNightsStay
+  MdHome, MdChat, MdPerson, MdFavorite, MdWbSunny, MdNightsStay, MdHowToVote
 } from 'react-icons/md';
 
 export default function Layout({ children }) {
@@ -48,6 +48,13 @@ export default function Layout({ children }) {
           <span className="cabinet text-xl font-900 tracking-tight text-insta-grad">Cactus</span>
         </div>
         <div className="flex items-center gap-3">
+          <button 
+            onClick={() => window.dispatchEvent(new Event('toggle-widgets'))} 
+            className={`p-2 rounded-lg transition-all md:hidden ${dark ? 'text-pink-400 hover:bg-zinc-900' : 'text-rose-600 hover:bg-slate-100'}`}
+            title="Toggle Debate & Polls Panel"
+          >
+            <MdHowToVote className="text-xl animate-pulse" />
+          </button>
           <button onClick={toggleTheme} className={`p-2 rounded-lg transition-all ${dark ? 'text-pink-400 hover:bg-zinc-900' : 'text-rose-600 hover:bg-slate-100'}`}>
             {dark ? <MdWbSunny className="text-xl" /> : <MdNightsStay className="text-xl" />}
           </button>
@@ -60,7 +67,7 @@ export default function Layout({ children }) {
       <div className="flex min-h-screen">
         
         {/* Sidebar Navigation (Desktop) */}
-        <aside className={dark ? "hidden md:flex flex-col py-8 px-6 gap-y-6 h-screen w-64 fixed border-r border-zinc-900 bg-black z-50" : "hidden md:flex flex-col py-8 px-6 gap-y-6 h-screen w-64 fixed border-r border-slate-200 bg-white z-50 shadow-sm"}>
+        <aside className={dark ? "hidden md:flex flex-col py-8 px-6 gap-y-6 h-screen w-64 fixed border-r border-zinc-900 bg-black z-50 overflow-y-auto" : "hidden md:flex flex-col py-8 px-6 gap-y-6 h-screen w-64 fixed border-r border-slate-200 bg-white z-50 shadow-sm overflow-y-auto"}>
           <div className="flex justify-between items-center mb-8">
             <Link to="/" className="flex items-center gap-2">
               <img src="/logo.png" alt="Cactus Logo" className="h-7 w-auto object-contain" />
@@ -106,7 +113,7 @@ export default function Layout({ children }) {
         </aside>
 
         {/* Content canvas container */}
-        <div className="flex-1 min-h-screen">
+        <div className="flex-1 min-h-screen md:pl-64">
           {children}
         </div>
       </div>
