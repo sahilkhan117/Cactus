@@ -6,10 +6,23 @@ import Message from "../models/Message.js";
 
 export let io: SocketIOServer;
 
+const socketAllowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "https://cactus-green.vercel.app",
+  process.env.CLIENT_URL,
+].filter(Boolean) as string[];
+
 export const initSocket = (server: HttpServer) => {
   io = new SocketIOServer(server, {
     cors: {
-      origin: process.env.CLIENT_URL || "http://localhost:5173",
+      origin: (origin, callback) => {
+        if (!origin || socketAllowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Socket CORS: origin '${origin}' not allowed`));
+        }
+      },
       methods: ["GET", "POST"],
       credentials: true,
     },

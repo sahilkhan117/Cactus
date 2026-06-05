@@ -5,24 +5,48 @@ import dotenv from "dotenv";
 import { connectDB } from "./config/db.js";
 import { initSocket } from "./config/socket.js";
 
-// Load environment variables
+// Load environment variables FIRST before anything else
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 
-app.use(express.json());
+// ─────────────────────────────────────────────────────────────
+// CORS must be the VERY FIRST middleware — before express.json,
+// before routes, before Socket.io — so that browser OPTIONS
+// preflight requests receive correct Access-Control headers.
+// ─────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  "http://localhost:5173",          // Vite dev server
+  "http://localhost:4173",          // Vite preview server
+  "https://cactus-green.vercel.app", // Production frontend
+  process.env.CLIENT_URL,           // Override via Render env var
+].filter(Boolean) as string[];
 
-// Initialize Socket.io
-initSocket(server);
-
-// Middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 }));
+
+// Explicitly respond 200 to all OPTIONS preflight requests
+app.options("*", cors());
+
+// Body parsers (after CORS, before routes)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Initialize Socket.io (after CORS so HTTP upgrade inherits headers)
+initSocket(server);
 
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
@@ -38,7 +62,6 @@ import storyRoutes from "./routes/story.routes.js";
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/posts", postRoutes);
-// Nested routes for comments
 app.use("/api/posts/:id/comments", commentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/search", searchRoutes);
@@ -46,25 +69,23 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/stories", storyRoutes);
 
-// Basic route
-app.get("/", (req, res) => {
-  res.send("Cactus API is running");
+// Health check
+app.get("/", (_req, res) => {
+  res.json({ status: "ok", message: "Cactus API is running 🌵" });
 });
 
 const PORT = process.env.PORT || 5000;
 
-// Connect to DB and start server
 const startServer = async () => {
-    // Only connect if MONGO_URI is set, this is to prevent the app from crashing locally if the user hasn't set it yet
-    if (process.env.MONGO_URI) {
-        await connectDB();
-    } else {
-        console.warn("WARNING: MONGO_URI is not set. Database will not be connected.");
-    }
-  
-    server.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-    });
+  if (process.env.MONGO_URI) {
+    await connectDB();
+  } else {
+    console.warn("⚠️  MONGO_URI not set — database will not connect.");
+  }
+  server.listen(PORT, () => {
+    console.log(`🌵 Server running on port ${PORT}`);
+    console.log(`   Allowed origins: ${allowedOrigins.join(", ")}`);
+  });
 };
 
 startServer();
