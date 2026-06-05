@@ -393,8 +393,8 @@ export default function Feed() {
           )}
 
           {posts.map((post) => (
-            <article key={post._id} className="group rounded-2xl border bg-white dark:bg-zinc-950 border-slate-200/80 dark:border-zinc-900 overflow-hidden shadow-sm">
-              <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-zinc-900">
+            <article key={post._id} className={`group rounded-2xl border overflow-hidden shadow-sm ${dark ? 'bg-zinc-950 border-zinc-900' : 'bg-white border-slate-200/80'}`}>
+              <div className={`flex items-center gap-3 px-5 py-4 border-b ${dark ? 'border-zinc-900' : 'border-slate-100'}`}>
                 <div className={`w-10 h-10 rounded-full overflow-hidden border p-0.5 ${dark ? 'border-zinc-800' : 'border-slate-200'}`}>
                   <img 
                     className="w-full h-full object-cover rounded-full" 
@@ -404,32 +404,32 @@ export default function Feed() {
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <h3 className="font-bold text-sm text-slate-800 dark:text-zinc-200">{post.authorId?.fullName || "Anonymous"}</h3>
-                    <span className="text-[10px] text-slate-400 dark:text-zinc-500">• {new Date(post.createdAt).toLocaleDateString()}</span>
+                    <h3 className={`font-bold text-sm ${dark ? 'text-zinc-200' : 'text-slate-800'}`}>{post.authorId?.fullName || "Anonymous"}</h3>
+                    <span className={`text-[10px] ${dark ? 'text-zinc-500' : 'text-slate-400'}`}>• {new Date(post.createdAt).toLocaleDateString()}</span>
                   </div>
-                  <p className="text-[10px] font-bold text-pink-500 dark:text-pink-400 uppercase tracking-widest">@{post.authorId?.role || "student"}</p>
+                  <p className={`text-[10px] font-bold uppercase tracking-widest ${dark ? 'text-pink-400' : 'text-pink-500'}`}>@{post.authorId?.role || "student"}</p>
                 </div>
                 <button className={`ml-auto ${dark ? 'text-zinc-600 hover:text-zinc-400' : 'text-slate-400 hover:text-slate-600'}`}><MdMoreHoriz className="text-xl" /></button>
               </div>
 
               <div className="p-5">
-                <p className="text-sm font-normal leading-relaxed text-slate-700 dark:text-zinc-300">{post.content}</p>
+                <p className={`text-sm font-normal leading-relaxed ${dark ? 'text-zinc-300' : 'text-slate-700'}`}>{post.content}</p>
                 {post.tags && post.tags.length > 0 && (
                   <div className="mt-4 flex flex-wrap gap-1.5">
                     {post.tags.map(t => (
-                      <span key={t} className="px-2.5 py-0.5 text-[9px] font-bold uppercase rounded-full bg-rose-50 dark:bg-pink-950/20 text-rose-600 dark:text-pink-400 border border-rose-100/50 dark:border-pink-900/10">#{t}</span>
+                      <span key={t} className={`px-2.5 py-0.5 text-[9px] font-bold uppercase rounded-full border ${dark ? 'bg-pink-950/20 text-pink-400 border-pink-900/10' : 'bg-rose-50 text-rose-600 border-rose-100/50'}`}>#{t}</span>
                     ))}
                   </div>
                 )}
               </div>
 
               {post.mediaUrls && post.mediaUrls[0] && (
-                <div className="aspect-video w-full relative overflow-hidden bg-slate-50 dark:bg-zinc-900 border-y border-slate-100 dark:border-zinc-900">
+                <div className={`aspect-video w-full relative overflow-hidden border-y ${dark ? 'bg-zinc-900 border-zinc-900' : 'bg-slate-50 border-slate-100'}`}>
                   <img className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.01]" alt="Post attachment" src={post.mediaUrls[0]} />
                 </div>
               )}
 
-              <div className="flex items-center gap-6 px-5 py-3.5 bg-slate-50/50 dark:bg-zinc-950/50 border-t border-slate-100 dark:border-zinc-900">
+              <div className={`flex items-center gap-6 px-5 py-3.5 border-t ${dark ? 'bg-zinc-950/50 border-zinc-900' : 'bg-slate-50/50 border-slate-100'}`}>
                 <button 
                   onClick={() => handleLike(post._id)}
                   className={`flex items-center gap-1.5 transition-all group/icon ${dark ? 'text-zinc-400 hover:text-pink-400' : 'text-slate-500 hover:text-rose-600'}`}

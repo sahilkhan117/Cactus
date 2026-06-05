@@ -255,12 +255,12 @@ export default function CactusLanding() {
                   </div>
                 </div>
                 {['🏠 Home', '💬 Messages', '💖 Heartbeats', '👤 My Space'].map((item, i) => (
-                  <div key={i} className={`px-3 py-2 rounded-xl text-xs font-700 satoshi cursor-pointer transition-colors ${i === 0 ? 'bg-rose-50 dark:bg-pink-950/20 text-rose-600 dark:text-pink-400' : 'text-slate-500 dark:text-zinc-500 hover:bg-slate-50 dark:hover:bg-zinc-900'}`}>
+                  <div key={i} className={`px-3 py-2 rounded-xl text-xs font-700 satoshi cursor-pointer transition-colors ${i === 0 ? (dark ? 'bg-pink-950/20 text-pink-400' : 'bg-rose-50 text-rose-600') : (dark ? 'text-zinc-500 hover:bg-zinc-900' : 'text-slate-500 hover:bg-slate-50')}`}>
                     {item}
                   </div>
                 ))}
               </div>
-
+ 
               {/* Feed */}
               <div className={`flex flex-col text-left overflow-hidden ${dark ? 'bg-black' : 'bg-[#FAFBF9]'}`}>
                 <div className={`px-5 py-4 border-b flex items-center justify-between ${dark ? 'border-zinc-900' : 'border-slate-100 bg-white'}`}>
@@ -270,12 +270,12 @@ export default function CactusLanding() {
                     LIVE
                   </div>
                 </div>
-
+ 
                 {[
                   { user: 'Meera Nair', role: 'student', time: 'now', post: 'Anyone else applying for the Google Summer Internship? Let\'s form a prep and coffee group! ☕🔥', likes: 34, tag: '🚀 study-prep', avatar: 'MN' },
                   { user: 'Prof. Iyer', role: 'faculty', time: '8m', post: 'Assignment 4 deadline extended to Friday. Submit via portal only.', likes: 112, tag: '📢 notice', avatar: 'PI' },
                 ].map((p, i) => (
-                  <div key={i} className={`px-5 py-4 border-b bg-white dark:bg-zinc-950 transition-all ${dark ? 'border-zinc-900' : 'border-slate-100'}`}>
+                  <div key={i} className={`px-5 py-4 border-b transition-all ${dark ? 'bg-zinc-950 border-zinc-900' : 'bg-white border-slate-100'}`}>
                     <div className="flex gap-3">
                       <div className="w-9 h-9 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 bg-insta-grad text-white">
                         {p.avatar}
@@ -286,9 +286,9 @@ export default function CactusLanding() {
                           <span className={`text-[8px] px-1 py-0.5 rounded-md font-bold uppercase ${dark ? 'bg-zinc-900 text-zinc-500' : 'bg-slate-100 text-slate-400'}`}>{p.role}</span>
                           <span className={`text-[10px] ml-auto ${dark ? 'text-zinc-700' : 'text-slate-400'}`}>{p.time}</span>
                         </div>
-                        <div className="text-[10px] font-bold mb-1 text-pink-500 dark:text-pink-400">{p.tag}</div>
+                        <div className={`text-[10px] font-bold mb-1 ${dark ? 'text-pink-400' : 'text-pink-500'}`}>{p.tag}</div>
                         <p className={`text-xs leading-relaxed satoshi ${dark ? 'text-zinc-400' : 'text-slate-600'}`}>{p.post}</p>
-                        <div className="flex items-center gap-4 mt-2 text-[10px] text-slate-400 dark:text-zinc-650">
+                        <div className={`flex items-center gap-4 mt-2 text-[10px] ${dark ? 'text-zinc-550' : 'text-slate-400'}`}>
                           <button className="hover:text-rose-500">💖 {p.likes}</button>
                           <button className="hover:text-pink-500">💬 Reply</button>
                         </div>
@@ -399,11 +399,11 @@ export default function CactusLanding() {
       {/* TESTIMONIALS */}
       <section id="community" className={`py-24 px-6 border-t ${dark ? 'border-zinc-900' : 'border-slate-50'}`}>
         <div className="max-w-4xl mx-auto text-center">
-          <span className="text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full border inline-block mb-6 bg-pink-50 dark:bg-pink-950/20 text-pink-500 dark:text-pink-400 border-rose-100 dark:border-pink-900/10">Campus Stories</span>
+          <span className={`text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full border inline-block mb-6 ${dark ? 'bg-pink-950/20 text-pink-400 border-pink-900/10' : 'bg-pink-50 text-pink-500 border-rose-100'}`}>Campus Stories</span>
           <h2 className="cabinet text-4xl md:text-5xl font-900 mb-16">
             Classmates making connections
           </h2>
-
+ 
           <div className="relative min-h-[180px]">
             {TESTIMONIALS.map((t, i) => (
               <div key={i} className={`testi-slide absolute inset-0 flex flex-col items-center transition-all duration-500 ${i === activeTestimonial ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
@@ -420,11 +420,11 @@ export default function CactusLanding() {
               </div>
             ))}
           </div>
-
+ 
           <div className="flex justify-center gap-2 mt-8">
             {TESTIMONIALS.map((_, i) => (
               <button key={i} onClick={() => setActiveTestimonial(i)}
-                className={`rounded-full cursor-pointer transition-all duration-300 ${i === activeTestimonial ? 'w-8 h-2 bg-pink-500' : 'w-2 h-2 bg-slate-200 dark:bg-zinc-800'}`} />
+                className={`rounded-full cursor-pointer transition-all duration-300 ${i === activeTestimonial ? 'w-8 h-2 bg-pink-500' : `w-2 h-2 ${dark ? 'bg-zinc-800' : 'bg-slate-200'}`}`} />
             ))}
           </div>
         </div>
